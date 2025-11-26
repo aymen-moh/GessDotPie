@@ -252,12 +252,84 @@ class HiloView(discord.ui.View):
       new += random.choice([-1, 1])
     return new
   
-  def WoL(self, new, choice):
+  def WoL(self, new, choice):   # Wint or Loze
     if choice == "higher":
       return new > self.last 
     if choice == "lower":
-      return nee < self.last 
+      return new < self.last 
     
   async def play(self, inter, choice):
     new = self.roll_card()
+    win = self.WoL(new, choice)
+    if win:
+      self.mult *= 1.2 
+      self.last = new 
+      embed = discord.Embed(
+      title="Hilo",
+      description=f"You Chose `{choice}`.\nCard: **{new}**\nYou **WIN!**",
+      color=discord.Color.green()
+      )
+      embed.add_field(name="Multiplier", value=f"x{self.mult:.2f}")
+      embed.add_field(name="Last Card", value=str(self.last))
+      await inter.response.edit_message(embed=embed, view=self)
+    
+    else:
+      embed = discord.Embed(
+        title="Hilo",
+        description=f"You Chose `{choice}`.\nCard: **{new}**\nYou **LOSE!**",
+        color=discord.Color.red(),
+      )
+      self.clear_items()
+      await inter.response.edit_message(embed=embed, view=None)
+  
+  @discord.ui.button(label="Higher", style=discord.ButtonStyle.green)
+  async def higher_btn(self, inter, _):
+    await self.play(inter, "higher")
+  
+  @discord.ui.button(label="Lower", style=discord.ButtonStyle.red)
+  async def lowerBtn(self, inter, _):
+    await self.play(inter, "lower")
+  
+  @discord.ui.button(label="Cash Out", style=discord.ButtonStyle.grey)
+  async def CashoutBtn(self, inter, _):
+    win_amt = int(self.bet * self.mult)
+    uid = str(self.user_id)
+    setBal(uid, getBal(uid) + win_amt)
+    
+    embed = discord.Embed(
+      title="Hilo",
+      description=f"You Cashed out with: **{win_amt}** coins.",
+      color=discord.Color.gold(),
+    )
+    self.clear_items()
+    await inter.response.edit_message(embed=embed, view=None)
+  
+@bot.tree.command(name="hilo", description="Hilo game, Please go to #help for further explanation.")
+@app_commands.describe(amount="Enter Bet Amount")
+async def hilo_cmd(inter, amount: str):
+  uid = str(inter.user.id)
+  amt = parse(amount)
+  bal = getBal(uid)
+  
+  if amt <= 0:
+    await inter.response.send_message("Invalid amount.", ephemeral=True)
+    return
+  
+  if amt > bal:
+    await inter.response.send_message("Not Enough **__Credit__**", ephemeral=True)
+    return
+  
+  setBal(uid, bal - amt)
+  
+  start_card = random.randint(1, 13)
+  embed = discord.Embed(
+    title="Hilo",
+    description=f"Starting Card: **{start_card}**",
+    color=discord.Color.blue()
+  )
+  embed.add_field(name="Multiplier", value="x1.00")
+  
+  view = HiloView(amt, start_card, inter.user.id)
+  await inter.response.send_message(embed=embed, view=view)
+
 bot.run(TOKEN)
