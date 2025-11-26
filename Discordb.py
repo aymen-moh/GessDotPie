@@ -235,5 +235,29 @@ async def roll_cmd(inter, amount: str, target: int, choice: str):
     view = None
   
   await inter.response.send_message(embed=embed, view=view)
-
+class HiloView(discord.ui.View):
+  def __init__(self, bet, last_num, user_id):
+    super().__init__(timeout=60)
+    self.bet = bet 
+    self.last = last_num
+    self.user_id = user_id
+    self.mult = 1.0
+  
+  async def interaction_check(self, inter):
+    return inter.user.id == self.user_id
+    
+  def roll_card(self):
+    new = random.randint(1, 13)
+    if new == self.last and new not in (1, 13):
+      new += random.choice([-1, 1])
+    return new
+  
+  def WoL(self, new, choice):
+    if choice == "higher":
+      return new > self.last 
+    if choice == "lower":
+      return nee < self.last 
+    
+  async def play(self, inter, choice):
+    new = self.roll_card()
 bot.run(TOKEN)
