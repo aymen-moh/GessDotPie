@@ -5,7 +5,7 @@ import json
 import os 
 import random
 from config import TOKEN
-
+import asyncio
 balF = "balances.json"
 Fbal = 30000
 housingEdge = 0.97
@@ -331,5 +331,169 @@ async def hilo_cmd(inter, amount: str):
   
   view = HiloView(amt, start_card, inter.user.id)
   await inter.response.send_message(embed=embed, view=view)
+  
+@bot.tree.command(name="givemoney", description="Give money to fellow members.")
+async def givemoney(inter, user: discord.Member, amount: str):
+  SID = str(inter.user.id)
+  RID = str(user.id)
+  
+  if SID == RID:
+    await inter.response.send_message("You **__Cannot__** Send money to __yourself__", ephemeral=True)
+    return
+  
+  amt = parse(amount)
+  sBal = getBal(SID)
+  
+  if amt <= 0:
+    await inter.response.send_message("Invalid Amount.", ephemeral=True)
+    return
+  
+  if sBal < amt:
+    await inter.response.send_message("Not Enough **__Credits__**.", ephemeral=True)
+    return
+  
+  
+  setBal(SID, sBal - amt)
+  setBal(RID, getBal(RID) + amt)
+  
+  await inter.response.send_message(f"<@{SID}> sent **__{amt:,}__** Coins to {user.mention}.")
+  
+  # if you're wondering why there are a quintilliun amount of Your hand: Dealer hand: because one for every scenario.
+
+card_shape = (":spades:", ":diamonds:", ":hearts:", ":clubs:")
+card_deck = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 10, 11]
+
+class blackjackView(discord.ui.View):
+  def __init__(self, bet, user_id):
+    super().__init__(timeout=60)
+    self.bet = bet 
+    self.user_id = user_id
+    self.deck = [(v, s) for v in card_deck for s in card_shape]
+    random.shuffle(self.deck)
+    self.player_hand = [self.draw_card(), self.draw_card()]
+    self.dealer_hand = [self.draw_card()]
+    self.finish = False
+  
+  def draw_card(self):
+    v, s = self.deck.pop()
+    return (v, s)
+  
+  def hand_display(self, hand):
+    total = sum(card[0] for card in hand)
+    cards = ",".join(f"{s}{v}" for v, s in hand)
+    return f"{cards}  ({total})"
+  
+  @discord.ui.button(label="Hit", style=discord.ButtonStyle.green)
+  async def hit(self, inter: discord.Interaction, _):
+    if inter.user.id != selff.user_id or self.finished:
+      return
+    self.player_hand.append(self.draw_card())
+    total = sum(c[0] for c in self.player_hand)
+    if (total > 21):
+      self.finished = True
+      self.clear_items()
+      embed = discord.Embed(title="You lost.", color=discord.Color.red())
+      embed.add_field(name="Your Hand: ", value=self.hand_display(self.player_hand))                    
+      embed.add_field(name="Dealer Hand: ", value=f"{self.dealer_hand[0][1]}({self.dealer_hand[0][0]})")
+      embed.description = f"Busted! - You Lost"
+      await inter.response.edit_message(embed=embed, view=self)
+  @discord.ui.button(label="Hit", style=discord.ButtonStyle.green)
+  async def hit(self, inter: discord.Interaction, _):
+    if inter.user.id != self.user_id or self.finish:
+      return
+    self.player_hand.append(self.draw_card())
+    total = sum(c[0] for c in self.player_hand)
+    if (total > 21):
+      self.finished = True
+      self.clear_items()
+      embed = discord.Embed(title="You lost.", color=discord.Color.red())
+      embed.add_field(name="Your Hand: ", value=self.hand_display(self.player_hand))
+      embed.add_field(name="Dealer Hand: ", value=f"{self.dealer_hand[0][1]}({self.dealer_hand[0][0]})")
+      embed.description  = f"Busted! - You Lost"
+      await inter.response.edit_message(embed=embed, view=None)
+      return
+    embed = discord.Embed(title="Blackjack", color=discord.Color.blue())
+    embed.add_field(name="Your Hand: ", value=self.hand_display(self.player_hand))
+    embed.add_field(name="Dealer showing: ", value=f"{self.dealer_hand[0][1]}({self.dealer_hand[0][0]})")
+    await inter.response.edit_message(embed=embed, view=self)
+  
+  @discord.ui.button(label="Stand", style=discord.ButtonStyle.red)
+  async def stand(self, inter: discord.Interaction, _):
+    if inter.user.id != self.user_id or self.finish:
+      return
+    self.finished = True
+    self.clear_items()
+    
+    
+    player_total = sum(c[0] for c in self.player_hand)
+    dealer_hand = [self.dealer_hand[0]]
+    
+    embed = discord.Embed(title="Blackjack", color=discord.Color.blue())
+    embed.add_field(name="Your hand:", value=self.hand_display(self.player_hand))
+    embed.add_field(name="Dealer Hand:", value=self.hand_display(dealer_hand))
+    await inter.response.edit_message(embed=embed, view=self)
+    await asyncio.sleep(0.5)
+    
+    while sum(c[0] for c in dealer_hand) < player_total and sum(c[0] for c in dealer_hand) <= 21:
+      dealer_hand.append(self.draw_card())
+      embed = discord.Embed(title="Blackjack", color=discord.Color.blue())
+      embed.add_field(name="Your Hand: ", value=self.hand_display(self.player_hand))
+      embed.add_field(name="Dealer hand", value=self.hand_display(dealer_hand))
+      
+      await inter.edit_original_response(embed=embed)
+      await asyncio.sleep(0.5)
+    
+    dealer_total = sum(c[0] for c in dealer_hand)
+    
+    
+    dealer_total == sum(c[0] for c in dealer_hand)
+      
+    
+    if dealer_total > 21:
+      msg = f"You **WON {self.bet*2:,}**"
+      color = discord.Color.gold()
+      setBal(str(self.user_id), getBal(str(self.user_id)) + self.bet*2)
+    elif dealer_total > player_total:
+      msg = f"You Lost."
+      color = discord.Color.red()
+    else:
+      msg = "Push! (draw)"
+      color = discord.Color.green()
+      setBal(str(self.user_id), getBal(str(self.user_id)) + self.bet)
+    
+    LASTE = discord.Embed(title="Blackjack", color=color)       # yes, my friend taught me that I can do this.
+    LASTE.description = msg 
+    LASTE.add_field(name="Your Hand", value=self.hand_display(dealer_hand))
+    LASTE.add_field(name="Dealer hand", value=self.hand_display(dealer_hand))
+    
+    
+    await inter.edit_original_response(embed=LASTE, view=None)
+
+@bot.tree.command(name="blackjack", description="Play blackjack (x2), PLEASE USE #HELP FOR MORE INFO OR OPEN A SUPPORT TICKET.")
+async def blackjack(Interaction: discord.Interaction, bet: str):
+  user_id = str(Interaction.user.id)
+  betAMT = parse(bet)
+  bal = getBal(user_id)
+  
+  if betAMT > bal:
+    await Interaction.response.send_message("You Do Not Have Enough Balance.", ephemeral=True)
+    return
+  setBal(user_id, bal - betAMT)
+  view = blackjackView(betAMT, Interaction.user.id)
+  await Interaction.response.send_message(embed=discord.Embed(
+    title="Blackjack",
+    description=f"Your hand: {view.hand_display(view.player_hand)}\nDealer showing: {view.dealer_hand[0][1]}{view.dealer_hand[0][0]}",
+    color=discord.Color.blue()
+    ), view=view)
+    
+  
+
+
+
+
+
+
+
+
 
 bot.run(TOKEN)
