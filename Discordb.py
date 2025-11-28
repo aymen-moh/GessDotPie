@@ -10,6 +10,8 @@ balF = "balances.json"
 Fbal = 30000
 housingEdge = 0.97
 
+
+
 if os.path.exists(balF):
   try:
     with open(balF, "r") as f:
@@ -485,11 +487,79 @@ async def blackjack(Interaction: discord.Interaction, bet: str):
     description=f"Your hand: {view.hand_display(view.player_hand)}\nDealer showing: {view.dealer_hand[0][1]}{view.dealer_hand[0][0]}",
     color=discord.Color.blue()
     ), view=view)
-    
+
+class PaperRedstoneView(discord.ui.View):
+  def __init__(self, bet, user_id):
+    super().__init__(timeout=60)
+    self.bet = bet 
+    self.user_id = user_id
   
+  async def interaction_check(self, inter: discord.Interaction):
+    return inter.user.id == self.user_id
+  
+  async def play_g(self, inter: discord.Interaction, choice: str):
+    paper_roll = random.randint(1, 9)
+    redstone_roll = random.randint(1, 9)
+    win = False
+    
+    if (choice == "paper"):
+      if paper_roll > redstone_roll:
+        win = True
+    elif (choice == "redstone"):
+      if paper_roll < redstone_roll:
+        win = True
+    
+    if win:
+      Winnings = self.bet * 2 
+      setBal(str(self.user_id), getBal(str(self.user_id)) + Winnings)
+      embed = discord.Embed(
+        title="PaperRedstone",
+        description=f"You Chose **{choice.capitalize()}**!\nPaper: {paper_roll}\nRedstone: {redstone_roll}\n\n**YOU WON {Winnings:,}!**",
+        color=discord.Color.green()
+      )
+    else:
+      embed = discord.Embed(
+        title="PaperRedstone",
+        description=f"You Chose **{choice.capitalize()}**!\nPaper: {paper_roll}\nRedstone: {redstone_roll}\n\n**You lost.**",
+        color=discord.Color.red()
+      )
+    self.clear_items()
+    await inter.response.edit_message(embed=embed, view=None)
+  
+  @discord.ui.button(label="", emoji="<:emoji_1:1443963800091889796>", style=discord.ButtonStyle.blurple)
+  async def paper_btn(self, inter: discord.Interaction, button: discord.ui.Button):
+    await self.play_g(inter, "paper")
+  
+  @discord.ui.button(label="", emoji="<:emoji_2:1443964408874139669>", style=discord.ButtonStyle.blurple)
+  async def redstone_btn(self, inter: discord.Interaction, button: discord.ui.Button):
+    await self.play_g(inter, "redstone")
 
 
-
+@bot.tree.command(name="paper", description="play paper game (x2) - PLEASE USE #HELP OR OPEN A TICKET FOR FURTHER ASSISTANCE!!!")
+@app_commands.describe(amount="bet")
+async def paper_cmd(inter: discord.Interaction, amount: str):
+  user_id = str(inter.user.id)
+  bet = parse(amount)
+  bal = getBal(user_id)
+  
+  if bet <= 0:
+    await inter.response.send_message("Invalid bet Amount", ephemeral=True)
+    return
+  if bet > bal:
+    await inter.response.send_message("You Do NOT Have enough coins.", ephemeral=True)
+    return
+  
+  
+  setBal(user_id, bal - bet)
+  
+  embed = discord.Embed(
+    title="PaperRedstone",
+    description=f"Choose Paper or Redstone:",
+    color=discord.Color.blue()
+  )
+  
+  view = PaperRedstoneView(bet, inter.user.id)
+  await inter.response.send_message(embed=embed, view=view)
 
 
 
