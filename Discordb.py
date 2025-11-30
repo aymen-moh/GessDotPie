@@ -387,7 +387,11 @@ class blackjackView(discord.ui.View):
   
   @discord.ui.button(label="Hit", style=discord.ButtonStyle.green)
   async def hit(self, inter: discord.Interaction, _):
+<<<<<<< HEAD
     if inter.user.id != self.user_id or self.finished:
+=======
+    if inter.user.id != selff.user_id or self.finished:
+>>>>>>> 6551bf8942f1a7c6a702c401167a732f9305586c
       return
     self.player_hand.append(self.draw_card())
     total = sum(c[0] for c in self.player_hand)
@@ -564,10 +568,13 @@ async def paper_cmd(inter: discord.Interaction, amount: str):
 
 
 
+<<<<<<< HEAD
     
       
       
 
+=======
+>>>>>>> 6551bf8942f1a7c6a702c401167a732f9305586c
 
 
 bot.run(TOKEN)
