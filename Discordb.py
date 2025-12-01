@@ -387,11 +387,7 @@ class blackjackView(discord.ui.View):
   
   @discord.ui.button(label="Hit", style=discord.ButtonStyle.green)
   async def hit(self, inter: discord.Interaction, _):
-<<<<<<< HEAD
     if inter.user.id != self.user_id or self.finished:
-=======
-    if inter.user.id != selff.user_id or self.finished:
->>>>>>> 6551bf8942f1a7c6a702c401167a732f9305586c
       return
     self.player_hand.append(self.draw_card())
     total = sum(c[0] for c in self.player_hand)
@@ -566,15 +562,174 @@ async def paper_cmd(inter: discord.Interaction, amount: str):
   await inter.response.send_message(embed=embed, view=view)
 
 
+safeEmo = "<:safeTile:1444726813158015150>"
+notSafeEmo = "<:UnsafeTile:1444726698301198439>"
+unknownEmo = "<:unOpenedTile:1444382155693097141>"
 
+class MinesButton(discord.ui.Button):
+    def __init__(self, index: int):
+        super().__init__(style=discord.ButtonStyle.secondary, emoji=unknownEmo, row=index // 5)
+        self.index = index
 
-<<<<<<< HEAD
-    
-      
-      
+    async def callback(self, inter: discord.Interaction):
+        mv: 'MinesView' = self.view
+        if inter.user.id != mv.user_id:
+            await inter.response.send_message("You lost.", ephemeral=True)
+            return
+        if mv.tiles[self.index]:
+            mv.game_over = True
+            self.emoji = notSafeEmo
+            self.style = discord.ButtonStyle.danger
+            self.disabled = True
+            finMSG = f"{notSafeEmo} **You Hit a BOMB!**"
+            await mv.revealBoard(finMSG)
+            if mv.cashout_msg:
+                try:
+                    await mv.cashout_msg.edit(view=None)
+                except:
+                    pass
+            await inter.response.edit_message(view=mv)
+            return
 
-=======
->>>>>>> 6551bf8942f1a7c6a702c401167a732f9305586c
+        self.emoji = safeEmo
+        self.style = discord.ButtonStyle.success
+        self.disabled = True
+        mv.opened.add(self.index)
+
+        total_tiles = 25
+        safe_tiles = 25 - mv.bombs
+        currenO = 1.0
+        for i in range(len(mv.opened)):
+            currT = total_tiles - i
+            currS = safe_tiles - i
+            currenO *= (currT / currS)
+
+        mv.mult = currenO * housingEdge
+        await inter.response.edit_message(view=mv)
+
+        if mv.cashout_msg:
+            try:
+                embed = discord.Embed(
+                    title="**:dollar: Mines**",
+                    description=f"Current Multiplier **x{mv.mult:.2f}**\nWinnings: **{int(mv.bet * mv.mult):,}**",
+                    color=discord.Color.green()
+                )
+                await mv.cashout_msg.edit(embed=embed)
+            except:
+                pass
+
+class MinesView(discord.ui.View):
+    def __init__(self, user_id: int, bet: int, bombs: int):
+        super().__init__(timeout=300)
+        self.user_id = user_id
+        self.bet = bet
+        self.bombs = bombs
+        self.tiles = [False] * 25
+        self.opened = set()
+        self.mult = 1.0
+        self.game_over = False
+        self.msg = None
+        self.cashout_msg = None
+
+        placed = 0
+        while placed < bombs:
+            i = random.randint(0, 24)
+            if not self.tiles[i]:
+                self.tiles[i] = True
+                placed += 1
+
+        for i in range(25):
+            self.add_item(MinesButton(i))
+
+    async def revealBoard(self, finMSG: str):
+        for child in self.children:
+            if isinstance(child, MinesButton):
+                child.disabled = True
+                is_bomb = self.tiles[child.index]
+                if child.style == discord.ButtonStyle.danger:
+                    continue
+                if child.index in self.opened:
+                    child.style = discord.ButtonStyle.success
+                    child.emoji = safeEmo
+                else:
+                    child.style = discord.ButtonStyle.secondary
+                    if is_bomb:
+                        child.emoji = notSafeEmo
+                    else:
+                        child.emoji = safeEmo
+
+        if self.cashout_msg and finMSG.startswith(f"{notSafeEmo}"):
+            try:
+                embed = discord.Embed(
+                    title=f"{notSafeEmo} Mines",
+                    description=finMSG,
+                    color=discord.Color.red()
+                )
+                await self.cashout_msg.edit(embed=embed, view=None)
+            except:
+                pass
+
+    async def spawn_cashout(self, inter: discord.Interaction):
+        parent_view = self
+
+        class CashoutView(discord.ui.View):
+            def __init__(self):
+                super().__init__(timeout=300)
+
+            @discord.ui.button(label="Cash Out", emoji="<:emoji_10:1444986106188796035>", style=discord.ButtonStyle.green)
+            async def cash(self, inter: discord.Interaction, button: discord.ui.Button):
+                if inter.user.id != parent_view.user_id:
+                    await inter.response.send_message("this isn't your game", ephemeral=True)
+                    return
+                if parent_view.game_over:
+                    return
+                parent_view.game_over = True
+                win_amt = int(parent_view.bet * parent_view.mult)
+                setBal(str(parent_view.user_id), getBal(str(parent_view.user_id)) + win_amt)
+                final_text = f"{safeEmo} **CASHED OUT!** You Cashed Out With a {parent_view.mult:.2f} multi and **{win_amt:,}** Coins"
+                await parent_view.revealBoard(f"<:UnsafeTile:1444726698301198439> **You Hit a Bomb **")
+                final_embed = discord.Embed(
+                    title=f"{safeEmo} Cashed Out!",
+                    description=final_text,
+                    color=discord.Color.gold()
+                )
+                await inter.response.edit_message(embed=final_embed, view=None)
+
+        c_view = CashoutView()
+        iembed = discord.Embed(
+            title=f"**Mines** -- {self.bombs} Bombs",
+            description=f"Current Multiplier: **x1.00**\nWinnings: **{self.bet:,}**",
+            color=discord.Color.green()
+        )
+        try:
+            parent_view.cashout_msg = await inter.followup.send(
+                embed=iembed,
+                view=c_view
+            )
+        except:
+            pass
+
+@bot.tree.command(name="mines", description="Play mines game, 5x5, Multiplier depends on the qmount bombs, PLEASE GO TO #help FOR MORE INFO!")
+@app_commands.describe(amount="bet amount", bombs="Number of bombs, more bombs = more money per click")
+async def minesCMD(inter: discord.Interaction, amount: str, bombs: int):
+    uid = str(inter.user.id)
+    bet = parse(amount)
+    bal = getBal(uid)
+    if bet <= 0:
+        await inter.response.send_message("You Need Atleast $1 to bet.", ephemeral=True)
+        return
+    if bet > bal:
+        await inter.response.send_message("you DO NOT have enough money.", ephemeral=True)
+        return
+    if bombs < 1 or bombs > 24:
+        await inter.response.send_message("Bombs need to be more than zero and less thah 25", ephemeral=True)
+        return
+    setBal(uid, bal - bet)
+    mv = MinesView(inter.user.id, bet, bombs)
+    await inter.response.send_message(content=None, view=mv)
+    mv.msg = await inter.original_response()
+    await mv.spawn_cashout(inter)
+
 
 
 bot.run(TOKEN)
