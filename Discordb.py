@@ -465,7 +465,7 @@ class blackjackView(discord.ui.View):
     
     LASTE = discord.Embed(title="Blackjack", color=color)       # yes, my friend taught me that I can do this.
     LASTE.description = msg 
-    LASTE.add_field(name="Your Hand", value=self.hand_display(dealer_hand))
+    LASTE.add_field(name="Your Hand", value=self.hand_display(self.player_hand))
     LASTE.add_field(name="Dealer hand", value=self.hand_display(dealer_hand))
     
     
@@ -737,7 +737,7 @@ C_Conifg = {
   "easy": {"risk": 7, "mult": 1.065},
   "medium": {"risk": 12, "mult": 1.11},
   "hard": {"risk": 23, "mult": 1.224},
-}
+} #
 roadlength = 35
 
 class ChickenView(discord.ui.View):
@@ -797,7 +797,7 @@ class ChickenView(discord.ui.View):
       self.game_over = True
       self.clear_items()
       embed = discord.Embed(
-        title="Chiclen got ran over",
+        title="Chicken got ran over",
         description="You jumped and got ran over.",
         color=discord.Color.red()
       )
