@@ -731,5 +731,167 @@ async def minesCMD(inter: discord.Interaction, amount: str, bombs: int):
     await mv.spawn_cashout(inter)
 
 
+# i willmmakemthe multipliers in a functiin so i can chqnge them easily
+# i will also f9cus more on the nammes of the variables and functions to make it easier to review unlike my other projects :p
+C_Conifg = {
+  "easy": {"risk": 7, "mult": 1.065},
+  "medium": {"risk": 12, "mult": 1.11},
+  "hard": {"risk": 23, "mult": 1.224},
+}
+roadlength = 35
 
+class ChickenView(discord.ui.View):
+  def __init__(self, bet, user_id, difficulty):
+    super().__init__(timeout=300)
+    self.bet = bet 
+    self.user_id = user_id
+    self.difficulty = difficulty
+    self.config = C_Conifg[difficulty]
+    self.current_mult = 1.0
+    self.stepsTaken = 0 
+    self.game_over = False
+    self.safeJumps = 0 
+    self.max_multiplier = 1.0 
+    self.predetairmain() # i need this so i can display how muxh the user could have stayed and jumped for, like how much money you couldve got if stayed 
+  def predetairmain(self):
+    risk = self.config["risk"]
+    mult_step = self.config["mult"]
+    while True:
+      roll = random.randint(1, 100)
+      if roll <= risk:
+        break
+      else:
+        self.safeJumps += 1 
+        self.max_multiplier *= mult_step
+  def ProgressBar(self, lostAtStep=None): # Progress Bar
+    bar = []
+    for i in range(roadlength):
+      step_index = i + 1 
+      if lostAtStep is not None and step_index == lostAtStep:
+        bar.append("🟥")
+      elif step_index <= self.stepsTaken:
+        bar.append("🟩")
+      elif step_index == self.stepsTaken + 1 and not self.game_over:
+        bar.append("🐔")
+      else:
+        bar.append("⬜")
+    if self.stepsTaken == roadlength and not self.game_over:
+      return "".join(["🟩"] * roadlength)
+  
+    return "".join(bar)
+  async def interaction_check(self, inter):
+    return inter.user.id == self.user_id
+  def createE(self, title, description, color, lostAtStep = None):
+    embed = discord.Embed(title=title, description=description, color=color)
+    embed.add_field(name="Road Progress", value=self.ProgressBar(lostAtStep), inline=False)
+    embed.add_field(name="Multiplier", value=f"x{self.current_mult:.2f}")
+    if not self.game_over:
+      embed.description += f"\nDifficulty: {self.difficulty.capitalize()}"
+      return embed
+  @discord.ui.button(label="Jump", style=discord.ButtonStyle.green, emoji="🐔")
+  async def jump_btn(self, inter: discord.Interaction, _):
+    if self.game_over:
+      return
+    self.stepsTaken += 1
+    if self.stepsTaken > self.safeJumps:
+      self.game_over = True
+      self.clear_items()
+      embed = discord.Embed(
+        title="Chiclen got ran over",
+        description="You jumped and got ran over.",
+        color=discord.Color.red()
+      )
+      embed.add_field(name="Progress", value=self.ProgressBar(lostAtStep=self.stepsTaken), inline=False)
+      await inter.response.edit_message(embed=embed, view=None)
+    else:
+      self.current_mult *= self.config["mult"]
+      if self.stepsTaken == roadlength:
+        self.game_over = True
+        self.clear_items()
+        win_amt = int(self.bet * self.current_mult)
+        uid = str(self.user_id)
+        setBal(uid, getBal(uid) + win_amt)
+        embed = self.createE(
+          "End of the road",
+          f"You reached the end of the road, You cashed out with **{win_amt:,}** coins!",
+          discord.Color.gold()
+        )
+        await inter.response.edit_message(embed=embed, view=None)
+      else:
+        embed = self.createE(
+          "Chicken Road",
+          "The chicken successfully crossed the road",
+          discord.Color.gold()
+        )
+        await inter.response.edit_message(embed=embed, view=self)
+  @discord.ui.button(label="Cashout", style=discord.ButtonStyle.red, emoji="💰")
+  async def cashoutBtn(self, inter: discord.Interaction, _):
+    if self.game_over:
+      return
+    self.game_over = True
+    self.clear_items()
+    win_amt = int(self.bet * self.current_mult)
+    uid = str(self.user_id)
+    setBal(uid, getBal(uid) + win_amt)
+    
+    embed = discord.Embed(
+      title=f"💰 Cashed Out",
+      description=f"You cashed out with **{win_amt}** coins at a **x{self.current_mult:.2f}** Multiplier",
+      color=discord.Color.gold()
+    )
+    embed.add_field(name="Potential Winnings", value=f"You could Jumped **{self.safeJumps}** and got a **x{self.max_multiplier:.2f}** Multi!", inline=False)
+    await inter.response.edit_message(embed=embed, view=None)
+
+class ChickenStartView(discord.ui.View):
+  def __init__(self, bet, user_id):
+    super().__init__(timeout=300)
+    self.bet = bet 
+    self.user_id = user_id
+  async def interaction_check(self, inter):
+    return inter.user.id == self.user_id
+  async def start_game(self, inter: discord.Interaction, difficulty: str):
+    uid = str(self.user_id)
+    bal = getBal(uid)
+    if self.bet > bal:
+      await inter.response.send_message("You do not have enough money", embed=None, view=None)
+      return
+    setBal(uid, bal - self.bet)
+    game_view = ChickenView(self.bet, self.user_id, difficulty)
+    embed = game_view.createE(
+      f"Chicken Road",
+      f"Difficulty: **{difficulty.capitalize()}**",
+      discord.Color.blue()
+    )
+    await inter.response.edit_message(embed=embed, view=game_view)
+  @discord.ui.button(label="Easy", style=discord.ButtonStyle.green, emoji="<:emoji_11:1445342239583899791>")
+  async def easy_btn(self, inter: discord.Interaction, _):
+    await self.start_game(inter, "easy")
+  @discord.ui.button(label="Medium", style=discord.ButtonStyle.blurple, emoji="<:emoji_12:1445342413043269663>")
+  async def medium_btn(self, inter: discord.Interaction, _):
+    await self.start_game(inter, "medium")
+  @discord.ui.button(label="Hard", style=discord.ButtonStyle.red, emoji="<:emoji_13:1445342515346800670>")
+  async def hard_btn(self, inter: discord.Interaction, _):
+    await self.start_game(inter, "hard")
+@bot.tree.command(name="chicken", description="go to #chances for multipliers and chances info")
+@app_commands.describe(amount="Bet")
+async def chicken(inter: discord.Interaction, amount: str):
+  uid = str(inter.user.id)
+  amt = parse(amount)
+  bal = getBal(uid)
+  if amt <= 0:
+    await inter.response.send_message("Invalid bet amount.", ephemeral=True)
+    return
+  if amt > bal:
+    await inter.response.send_message("Not enough Money.", ephemeral=True)
+    return
+  view = ChickenStartView(amt, inter.user.id)
+  embed = discord.Embed(
+    title="<:emoji_14:1445349973272166490> Chicken Road",
+    description=f"Choose difficulty, go to #chances if you need to know more about each difficulties",
+    color=discord.Color.blue()
+  )
+  await inter.response.send_message(embed=embed, view=view)
+  
+    
+    
 bot.run(TOKEN)
