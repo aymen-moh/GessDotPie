@@ -6,6 +6,7 @@ import os
 import random
 from config import TOKEN
 import asyncio
+import re
 balF = "balances.json"
 Fbal = 30000
 housingEdge = 0.97
@@ -891,7 +892,209 @@ async def chicken(inter: discord.Interaction, amount: str):
     color=discord.Color.blue()
   )
   await inter.response.send_message(embed=embed, view=view)
+
+
+CodesF = "codes.json"
+TARGET_CHANNEL_ID = 1445414674433572956
+if os.path.exists(CodesF):
+  try:
+    with open(CodesF, "r") as f:
+      codes = json.load(f)
+  except:
+    codes = {}
+else:
+  codes = {}
+def saveCodes():
+  f = open(CodesF, "w")
+  json.dump(codes, f, indent=4)
+  f.close()
+def generate_code(length=10):
+  characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'
+  while True:
+    code = ''.join(random.choice(characters) for _ in range(length))
+    if code not in codes:
+      return code
+@bot.event 
+async def on_message(message):
+  if message.author == bot.user:
+    return
+  if message.channel.id == TARGET_CHANNEL_ID:
+    if not message.content.lower().startswith('/gencode'):
+      try:
+        await message.delete()
+        try:
+          await message.author.send(
+            f"Your message in <#{TARGET_CHANNEL_ID}> was deleted. This channel is **ONLY USED FOR GENERATING AND SHARING CODES.**",
+          )
+        except discord.Forbidden:
+          await message.channel.send(
+            f"Your message in <#{TARGET_CHANNEL_ID}> was deleted. This channel is **ONLY USED FOR GENERATING AND SHARING CODES.**",
+            delete_after=3.854838332206783
+          )
+      except discord.Forbidden:
+        print(f"Bot doesn't have premssion to delete the message")
+  await bot.process_commands(message)
+@bot.tree.command(name="gencode", description="generate a code, $1M minimum, 1-30 Uses. PLEASE USE #HELP FOR ANY QUESTIONS.")
+@app_commands.describe(
+  amount="amount of money per use",
+  uses="How many times the code can be used by differnt people",
+  custom_message="Message You Want alot of People To see",
+  silent="Weather to Ping The Role When Creating The Code.",
+)
+async def gencode_cmd(inter: discord.Interaction, amount: str, uses: int, custom_message: str = "", silent: bool = False):
+  is_admin = inter.user.guild_permissions.administrator
+  if inter.channel_id != TARGET_CHANNEL_ID and not is_admin:
+    channelm = f"<#{TARGET_CHANNEL_ID}>"
+    await inter.response.send_message(f"This command can only be used in {channelm}.", ephemeral=True)
+    return
+  uid = str(inter.user.id)
+  try:
+    amtV = parse(amount)
+  except:
+    await inter.response.send_message("invalid amount.", ephemeral=True)
+    return
+  maxUSES = 30
+  if not is_admin:
+    if uses < 1 or uses > 30:
+      await inter.response.send_message(f"uses must be between 1 and 30", ephemeral=True)
+      return
+  elif uses < 1:
+    await inter.response.send_message("Uses must be greater than Zero.", ephemeral=True)
+    return
+  if len(custom_message) > 100 and not is_admin:
+    await inter.response.send_message("The custom message can't be longer than 100 characters.", ephemeral=True)
+    return
+  if amtV <= 0:
+    await inter.response.send_message("Amount must be positive.", ephemeral=True)
+    return
+  totalV = amtV * uses 
+  MPU = 250000
+  if not is_admin and amtV < MPU:
+    await inter.response.send_message(f"The minimum amount per use is 250k, and the total cost of your code must be or exeed 1m, this is made to prevent spamming the role without any worthy code.", ephemeral=True)
+    return
+  MTV = 1000000 
+  if not is_admin and totalV < MTV:
+    await inter.response.send_message(f"The total value of your code needs to be more than $1M.", ephemeral=True)
+    return
+  cost = totalV
+  cost_msg = f"Cost: {cost:,} coins"
+  if not is_admin:
+    currentB = int(getBal(uid))
+    if currentB < cost:
+      await inter.response.send_message(f"You do not have enough money for this code, it costs **{cost:,}**", ephemeral=True)
+      return
+    setBal(uid, currentB - cost)
+  newCode = generate_code()
+  pingP = "<@&1445664081187967137>" if not silent else ""
+  customMsg = f"\n\n## *{custom_message}*" if custom_message else ""
+
+  msg_txt = (
+    f"{pingP} **NEW CODE** has just been posted by {inter.user.mention}!\n"
+    f"Show him some love in chat! ❤️<a:emoji_15:1445685849407750227>\n"
+    f"Value: **{amtV:,}** Per Use!\n\n"
+    f"# `/redeem code:{newCode}` - `/redeem code:{newCode}` - `/redeem code:{newCode}`"
+    f"\n\n## {inter.user.mention} says: {customMsg}"
+  )
+  await inter.response.send_message(msg_txt)
+  response_message = await inter.original_response()
+  puplicMID = str(response_message.id)
+  codes[newCode] = {
+    "amount": amtV,
+    "uses": uses,
+    "generated_by": uid,
+    "redeemed_by": [],
+    "message_id": puplicMID,
+  }
+  saveCodes()
+  titleT = f"Code ---- {amtV:,} Per!"
+  color_code = discord.Color.green()
+  pembed = discord.Embed(
+    title=titleT,
+    color=color_code,
+    description=""
+  )
+  pembed.add_field(name="Value", value=f"{amtV:,}", inline=True)
+  pembed.add_field(name="Uses Left:", value=f"{uses}", inline=True)
+  pembed.add_field(name="Total Value", value=f"{totalV:,}")
+  pembed.set_footer(text=cost_msg)
+  await inter.edit_original_response(content=msg_txt, embed=pembed)
+  
+
+
+
+
+
+@bot.tree.command(name="redeem", description="Redeem a code")
+@app_commands.describe(code="Enter the code that you got from the cldes channel ")
+async def redeem_cmd(inter: discord.Interaction, code: str):
+  uid = str(inter.user.id)
+  norm_code = code.upper()
+  isInCodeChannel = inter.channel_id == TARGET_CHANNEL_ID
+  if norm_code not in codes: # decided to make it so i can delete codes after they expire
+    await inter.response.send_message("Invalid or expired code.", ephemeral=True)
+    return
+  code_data = codes[norm_code]
+  if code_data["uses"] <= 0:
+    await inter.response.send_message("This code has no uses left.", ephemeral=True)
+    return
+  if uid in code_data["redeemed_by"]:
+    await inter.response.send_message("You have already redeemed this code.", ephemeral=True)
+    return
+  amount_gained = int(code_data["amount"] * 0.95) # %5 tax because the whole point of me making this bot is to make me money, obviously. this will not include real life money or something that can be valued at real life money like robux.
+  setBal(uid, getBal(uid) + amount_gained)
+  code_data["uses"] -= 1 
+  code_data["redeemed_by"].append(uid)
+  generator_id = int(code_data["generated_by"])
+  generator = inter.guild.get_member(generator_id)
+  if generator is None:
+    generatorNAME = f"<@{generator_id}>"
+  else:
+    generatorNAME = generator.mention
+  current_uses = code_data["uses"]
+  message_id = code_data.get("message_id")
+  
+  embed_color = discord.Color.green()
+  display_uses = current_uses
+  saveCodes()
+  if message_id:
+    try:
+      channel = inter.guild.get_channel(TARGET_CHANNEL_ID)
+      msg = await channel.fetch_message(int(message_id))
+      uses_line = f'Uses: **{display_uses}**'
+      if display_uses > 0:
+        uses_line += " ツ"
+        
+      new_content = re.sub(r"Uses: \*\*\d+\*\*( ツ)?", uses_line, msg.content) # Unfortunately, i used chatgpt here, because i honestly don't want to learn another library just to use it once. i am already getting close to finishing my bot and reaching 120 hours in moonshot. i am also very tight on time with the 12 Dec deadline.
+      await msg.edit(content=new_content)
+      new_color = discord.Color.green() if display_uses > 0 else discord.Color.red()
+      newEmbed = discord.Embed(
+        title=f"Code - {code_data["amount"]:,} Per!",
+        color=new_color
+      )
+      newEmbed.add_field(name="Value", value=f"{code_data['amount']:,}", inline=True)
+      newEmbed.add_field(name="Uses", value=f"{display_uses}", inline=True)
+      totalV = code_data['amount'] * code_data.get("maxUSES", display_uses)
+      newEmbed.add_field(name="Total Value", value=f"{totalV:,}")
+      await msg.edit(embed=newEmbed)
+    except Exception as e:
+      print("didnt update message ", e)
+  embed = discord.Embed(
+    title="<a:emoji_16:1445771098095616030> CODE REDEEMED!",
+    color=embed_color,
+    description=f"You got **{int(amount_gained):,}** coins from the code that was generated by <@{generator_id}>, 5% tax applied!"
+  )
+  await inter.response.send_message(embed=embed)
+    
+
+bot.run(TOKEN)
   
     
     
-bot.run(TOKEN)
+  
+    
+      
+  
+  
+
+
+
