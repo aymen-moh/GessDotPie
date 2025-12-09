@@ -1,15 +1,41 @@
 import discord
 from discord.ext import  commands
 from discord import app_commands
+from datetime import datetime
 import json
 import os 
 import random
 from config import TOKEN
 import asyncio
 import re
+
 balF = "balances.json"
 Fbal = 30000
 housingEdge = 0.97
+blocked = [1445414674433572956]
+
+
+logF = "logsh.json"
+if os.path.exists(logF):
+  try:
+    with open(logF, "r") as f:
+      logs = json.load(f)
+  except:
+    logs = []
+else: 
+  logs = []
+def saveLogs():
+  with open(logF, "w") as f:
+    json.dump(logs, f, indent=4)
+def new_log(user=None, note=None):
+  loge = {
+    "note": note,
+    "TIME": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  }
+  logs.append(loge)
+  saveLogs()
+    
+
 
 
 
@@ -75,7 +101,7 @@ class RollView(discord.ui.View):
     self.direction = direction
     self.mult = mult 
     self.user_id = user_id
-  
+    self.rolls = 1
   async def interaction_check(self, inter):
     if inter.user.id == self.user_id:
       return True
@@ -85,6 +111,7 @@ class RollView(discord.ui.View):
   async def roll_again(self, inter, _):
     roll = random.randint(1, 100)
     win = False
+    self.rolls += 1
     if self.direction == "over":
       if roll > self.target:
         win = True
@@ -111,6 +138,7 @@ class RollView(discord.ui.View):
         description=f"Roll: {roll}\nYou Lost.",
         color=discord.Color.red(),
         )
+      new_log(inter.user, f"The user {inter.user.display_name} lost {self.bet:,} abandoning his last multi x{self.mult:.2f}, after rolling {self.rolls} times betting on {self.direction} {self.target}, User id: {self.user_id}, current user balance after playing {getBal(str(self.user_id)):,}")
       self.clear_items()
       await inter.response.edit_message(embed=embed, view=None)
   @discord.ui.button(label="Cash Out", style=discord.ButtonStyle.red)
@@ -118,6 +146,7 @@ class RollView(discord.ui.View):
     winAMT = int(self.bet * self.mult)
     currentBal = getBal(str(self.user_id))
     new_bal = currentBal + winAMT
+    new_log(inter.user, f"The user {inter.user.display_name} Played roll and cashed out with {winAMT:,} at a x{self.mult:.2f} Multiplier after betting on {self.target} {self.direction}, and rolling {self.rolls} times. User Id: {self.user_id}, initial bet: {self.bet}, current balance after bet: {currentBal:,}")
     setBal(str(self.user_id), new_bal)
     embed = discord.Embed(
       title="Cashed Out!",
@@ -138,6 +167,10 @@ bot = DiceBot()
 
 @bot.tree.command(name="balance", description="Check your balance")
 async def balance(inter):
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
   uid = str(inter.user.id)
   b = getBal(uid)
   embed = discord.Embed(
@@ -148,6 +181,10 @@ async def balance(inter):
   await inter.response.send_message(embed=embed)
 @bot.tree.command(name="leaderboard", description="Show top Players (money wise)")
 async def leaderboard(inter):
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
   top = sorted(balances.items(), key=lambda x: x[1], reverse=True)[:10]
   desc = ""
   for i, (uid, bal) in enumerate(top):
@@ -167,16 +204,29 @@ async def leaderboard(inter):
 @bot.tree.command(name="admingivemoney", description="if you're an admin you can give members an infinite amount of money")
 @app_commands.checks.has_permissions(administrator=True)
 async def give(inter, user: discord.Member, amt: str):
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
   uid = str(user.id)
   a = parse(amt)
   current = getBal(uid)
   new_bal = current + a 
   setBal(uid, new_bal)
+  new_log(uid, f"The owner used /admingivemoney and gave {user.display_name} ${a:,}, user id: {uid}, User balance after: ${new_bal:,}.")
   await inter.response.send_message(f"Gave **{a:,}** to {user.mention}.")
   
 @bot.tree.command(name="admintakemoney", description="if you were a MODERATOR or OWNER, you can take money of any member")
 @app_commands.checks.has_permissions(administrator=True)
-async def take(inter, user: discord.Member, amt: str):
+async def take(inter, user: discord.Member, amt: str, reason: str):
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
   uid = str(user.id)
   a = parse(amt)
   current = getBal(uid)
@@ -184,11 +234,16 @@ async def take(inter, user: discord.Member, amt: str):
   if new_bal < 0:
     new_bal = 0 
   setBal(uid, new_bal)
+  new_log(uid, f"The owner used /admintakemoney and took ${a:,} from {user.display_name}, user id: {uid}, balance after: {new_bal:,}, reason: {reason}")
   await inter.response.send_message(f'Removed **{a:,}** coins from {user.mention}.')
   
 @bot.tree.command(name='roll', description="please go to #help for more information!")
 @app_commands.describe(amount='How Much To Roll.', target='3-97, higher risk higher reward.', choice="over/under")
 async def roll_cmd(inter, amount: str, target: int, choice: str):
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
   direction = choice.lower()
   if direction != "over" and direction != 'under':
     await inter.response.send_message('Choice must be over or under.', ephemeral=True)
@@ -227,16 +282,15 @@ async def roll_cmd(inter, amount: str, target: int, choice: str):
     embed.description=f"You rolled **{roll}** -- **WIN!**"
     embed.color=discord.Color.green()
     embed.add_field(name="Multiplier", value=f"x{mult:.2f}")
-
     view = RollView(amt, target, direction, mult, inter.user.id)
   else:
-    embed = discord.Embed() # eventually came back to the old methodbecause i got confused
+    embed = discord.Embed() # eventually came back to the old methodbecause i got confused i was confused cuz i didnt know how to add fields that way :p
     embed.title = "Roll Game:"
     embed.description = f"You rolled **{roll}** - lost."
     embed.color = discord.Color.red()
     embed.add_field(name="Final Winnings", value="0")
     view = None
-  
+    
   await inter.response.send_message(embed=embed, view=view)
 class HiloView(discord.ui.View):
   def __init__(self, bet, last_num, user_id):
@@ -274,6 +328,7 @@ class HiloView(discord.ui.View):
       )
       embed.add_field(name="Multiplier", value=f"x{self.mult:.2f}")
       embed.add_field(name="Last Card", value=str(self.last))
+      new_log(inter.user.id, f"The user {inter.user.display_name} played hilo and won, he got away with a x{self.mult:.2f} Multiplier, winning {(self.bet * self.mult):,}, --- initial bet: {self.bet}, user id: {inter.user.id}, Current Balance after bet: {getBal(inter.user.id):,}")
       await inter.response.edit_message(embed=embed, view=self)
     
     else:
@@ -282,6 +337,7 @@ class HiloView(discord.ui.View):
         description=f"You Chose `{choice}`.\nCard: **{new}**\nYou **LOSE!**",
         color=discord.Color.red(),
       )
+      new_log(inter.user.id, f"The user {inter.user.display_name} played hilo and lost {self.bet:,}, abandoning his last multi of x{self.mult:.2f}, user id: {inter.user.id}, currentBal after bet: {getBal(inter.user.id):,}")
       self.clear_items()
       await inter.response.edit_message(embed=embed, view=None)
   
@@ -310,6 +366,10 @@ class HiloView(discord.ui.View):
 @bot.tree.command(name="hilo", description="Hilo game, Please go to #help for further explanation.")
 @app_commands.describe(amount="Enter Bet Amount")
 async def hilo_cmd(inter, amount: str):
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
   uid = str(inter.user.id)
   amt = parse(amount)
   bal = getBal(uid)
@@ -337,6 +397,10 @@ async def hilo_cmd(inter, amount: str):
   
 @bot.tree.command(name="givemoney", description="Give money to fellow members.")
 async def givemoney(inter, user: discord.Member, amount: str):
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
   SID = str(inter.user.id)
   RID = str(user.id)
   
@@ -352,12 +416,13 @@ async def givemoney(inter, user: discord.Member, amount: str):
     return
   
   if sBal < amt:
-    await inter.response.send_message("Not Enough **__Credits__**.", ephemeral=True)
+    await inter.response.send_message("Not Enough money.", ephemeral=True)
     return
   
   
   setBal(SID, sBal - amt)
   setBal(RID, getBal(RID) + amt)
+  new_log(SID, f"The user {SID.display_name} gave {RID.display_name} ${amt:,}, sender id: {SID}, reciever id: {RID}, current sender balance (after Interaction): {getBal(SID):,}, current reciever balance (after Interaction): {getBal(RID):,}, total amount transferred: {amt:,}")
   
   await inter.response.send_message(f"<@{SID}> sent **__{amt:,}__** Coins to {user.mention}.")
   
@@ -395,10 +460,11 @@ class blackjackView(discord.ui.View):
     if (total > 21):
       self.finished = True
       self.clear_items()
-      embed = discord.Embed(title="You lost.", color=discord.Color.red())
+      embed = discord.Embed(title="Blackjack", color=discord.Color.red())
       embed.add_field(name="Your Hand: ", value=self.hand_display(self.player_hand))                    
       embed.add_field(name="Dealer Hand: ", value=f"{self.dealer_hand[0][1]}({self.dealer_hand[0][0]})")
       embed.description = f"Busted! - You Lost"
+      new_log(inter.user.id, f"The user {inter.user.display_name} played blackjack and Lost {self.bet:,}, he Busted, currentBal after bet: {self.bet:,}, user id: {inter.user.id}.")
       await inter.response.edit_message(embed=embed, view=self)
   @discord.ui.button(label="Hit", style=discord.ButtonStyle.green)
   async def hit(self, inter: discord.Interaction, _):
@@ -413,6 +479,7 @@ class blackjackView(discord.ui.View):
       embed.add_field(name="Your Hand: ", value=self.hand_display(self.player_hand))
       embed.add_field(name="Dealer Hand: ", value=f"{self.dealer_hand[0][1]}({self.dealer_hand[0][0]})")
       embed.description  = f"Busted! - You Lost"
+      new_log(inter.user.id, f"The user {inter.user.display_name} played blackjack and Lost {self.bet:,}, current bal: {getBal(str(inter.user.id)):,}, user id: {inter.user.id}.")
       await inter.response.edit_message(embed=embed, view=None)
       return
     embed = discord.Embed(title="Blackjack", color=discord.Color.blue())
@@ -456,14 +523,16 @@ class blackjackView(discord.ui.View):
       msg = f"You **WON {self.bet*2:,}**"
       color = discord.Color.gold()
       setBal(str(self.user_id), getBal(str(self.user_id)) + self.bet*2)
+      new_log(self.user_id, f"The user {inter.user.display_name} played blackjack and Won {self.bet*2:,}, user id: {inter.user.id}, currentBal: {getBal(str(inter.user.id)):,}.")
     elif dealer_total > player_total:
       msg = f"You Lost."
       color = discord.Color.red()
+      new_log(self.user_id, f"The user {inter.user.display_name} played blackjack and Lost {self.bet:,}, user id: {inter.user.id}, currentBal: {getBal(str(inter.user.id)):,}.")
     else:
       msg = "Push! (draw)"
       color = discord.Color.green()
       setBal(str(self.user_id), getBal(str(self.user_id)) + self.bet)
-    
+      # i didnt want to log the push since i only want to log stuff that changes and modifies the currency in the server, i will probably use the whole logging system to make some analysis and use this it for some machine learning stuff that i will get into hopefuly when i get a pc. (android is so limited :(   )
     LASTE = discord.Embed(title="Blackjack", color=color)       # yes, my friend taught me that I can do this.
     LASTE.description = msg 
     LASTE.add_field(name="Your Hand", value=self.hand_display(self.player_hand))
@@ -474,6 +543,10 @@ class blackjackView(discord.ui.View):
 
 @bot.tree.command(name="blackjack", description="Play blackjack (x2), PLEASE USE #HELP FOR MORE INFO OR OPEN A SUPPORT TICKET.")
 async def blackjack(Interaction: discord.Interaction, bet: str):
+  if Interaction.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
   user_id = str(Interaction.user.id)
   betAMT = parse(bet)
   bal = getBal(user_id)
@@ -518,12 +591,14 @@ class PaperRedstoneView(discord.ui.View):
         description=f"You Chose **{choice.capitalize()}**!\nPaper: {paper_roll}\nRedstone: {redstone_roll}\n\n**YOU WON {Winnings:,}!**",
         color=discord.Color.green()
       )
+      new_log(self.user_id, f"The user {inter.user.display_name} played PaperGame and Chose {choice}, he Won {paper_roll} (paper) to {redstone_roll} (redstone), user id: {self.user_id}, currentBal (: {getBal(str(self.user_id)):,}, bet: {self.bet:,}.")
     else:
       embed = discord.Embed(
         title="PaperRedstone",
         description=f"You Chose **{choice.capitalize()}**!\nPaper: {paper_roll}\nRedstone: {redstone_roll}\n\n**You lost.**",
         color=discord.Color.red()
       )
+      new_log(self.user_id, f"The user {inter.user.display_name} played PaperGame and Chose {choice}, he Lost {paper_roll} (paper) to {redstone_roll} (redstone), user id: {self.user_id}, currentBal (after bet): {getBal(str(self.user_id)):,}, bet: {self.bet:,}")
     self.clear_items()
     await inter.response.edit_message(embed=embed, view=None)
   
@@ -539,6 +614,10 @@ class PaperRedstoneView(discord.ui.View):
 @bot.tree.command(name="paper", description="play paper game (x2) - PLEASE USE #HELP OR OPEN A TICKET FOR FURTHER ASSISTANCE!!!")
 @app_commands.describe(amount="bet")
 async def paper_cmd(inter: discord.Interaction, amount: str):
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
   user_id = str(inter.user.id)
   bet = parse(amount)
   bal = getBal(user_id)
@@ -566,7 +645,7 @@ async def paper_cmd(inter: discord.Interaction, amount: str):
 safeEmo = "<:safeTile:1444726813158015150>"
 notSafeEmo = "<:UnsafeTile:1444726698301198439>"
 unknownEmo = "<:unOpenedTile:1444382155693097141>"
-
+notSafeEmo2 = "<a:emoji_19:1447239945428144231>"
 class MinesButton(discord.ui.Button):
     def __init__(self, index: int):
         super().__init__(style=discord.ButtonStyle.secondary, emoji=unknownEmo, row=index // 5)
@@ -579,6 +658,7 @@ class MinesButton(discord.ui.Button):
             return
         if mv.tiles[self.index]:
             mv.game_over = True
+            new_log(inter.user.id, f"The user {inter.user.display_name} played mines with {mv.bombs} bombs, he lost {mv.bet:,} currentBal (after bet): {getBal(str(mv.user_id)):,}, user_id: {mv.user_id}")
             self.emoji = notSafeEmo
             self.style = discord.ButtonStyle.danger
             self.disabled = True
@@ -611,7 +691,7 @@ class MinesButton(discord.ui.Button):
         if mv.cashout_msg:
             try:
                 embed = discord.Embed(
-                    title="**:dollar: Mines**",
+                    title=f"**Mines**",
                     description=f"Current Multiplier **x{mv.mult:.2f}**\nWinnings: **{int(mv.bet * mv.mult):,}**",
                     color=discord.Color.green()
                 )
@@ -631,7 +711,6 @@ class MinesView(discord.ui.View):
         self.game_over = False
         self.msg = None
         self.cashout_msg = None
-
         placed = 0
         while placed < bombs:
             i = random.randint(0, 24)
@@ -656,10 +735,11 @@ class MinesView(discord.ui.View):
                     child.style = discord.ButtonStyle.secondary
                     if is_bomb:
                         child.emoji = notSafeEmo
+                        
                     else:
                         child.emoji = safeEmo
 
-        if self.cashout_msg and finMSG.startswith(f"{notSafeEmo}"):
+        if self.cashout_msg and finMSG.startswith(f"{notSafeEmo2}"):#hi
             try:
                 embed = discord.Embed(
                     title=f"{notSafeEmo} Mines",
@@ -688,17 +768,18 @@ class MinesView(discord.ui.View):
                 win_amt = int(parent_view.bet * parent_view.mult)
                 setBal(str(parent_view.user_id), getBal(str(parent_view.user_id)) + win_amt)
                 final_text = f"{safeEmo} **CASHED OUT!** You Cashed Out With a {parent_view.mult:.2f} multi and **{win_amt:,}** Coins"
-                await parent_view.revealBoard(f"<:UnsafeTile:1444726698301198439> **You Hit a Bomb **")
+                await parent_view.revealBoard(f"{notSafeEmo2} **You Hit a Bomb **")
                 final_embed = discord.Embed(
                     title=f"{safeEmo} Cashed Out!",
                     description=final_text,
                     color=discord.Color.gold()
                 )
+                new_log(inter.user.id, f"The user {inter.user.display_name} played Mines with {parent_view.bombs} bombs, he cashed out with a {parent_view.mult:.2f} multi and won {win_amt:,}, user id: {inter.user.id}, currentBal (after bet): {getBal(str(inter.user.id)):,}")
                 await inter.response.edit_message(embed=final_embed, view=None)
 
         c_view = CashoutView()
         iembed = discord.Embed(
-            title=f"**Mines** -- {self.bombs} Bombs",
+            title=f"**Mines**",
             description=f"Current Multiplier: **x1.00**\nWinnings: **{self.bet:,}**",
             color=discord.Color.green()
         )
@@ -713,23 +794,28 @@ class MinesView(discord.ui.View):
 @bot.tree.command(name="mines", description="Play mines game, 5x5, Multiplier depends on the qmount bombs, PLEASE GO TO #help FOR MORE INFO!")
 @app_commands.describe(amount="bet amount", bombs="Number of bombs, more bombs = more money per click")
 async def minesCMD(inter: discord.Interaction, amount: str, bombs: int):
-    uid = str(inter.user.id)
-    bet = parse(amount)
-    bal = getBal(uid)
-    if bet <= 0:
-        await inter.response.send_message("You Need Atleast $1 to bet.", ephemeral=True)
-        return
-    if bet > bal:
-        await inter.response.send_message("you DO NOT have enough money.", ephemeral=True)
-        return
-    if bombs < 1 or bombs > 24:
-        await inter.response.send_message("Bombs need to be more than zero and less thah 25", ephemeral=True)
-        return
-    setBal(uid, bal - bet)
-    mv = MinesView(inter.user.id, bet, bombs)
-    await inter.response.send_message(content=None, view=mv)
-    mv.msg = await inter.original_response()
-    await mv.spawn_cashout(inter)
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
+  uid = str(inter.user.id)
+  bet = parse(amount)
+  bal = getBal(uid)
+  if bet <= 0:
+    await inter.response.send_message("You Need Atleast $1 to bet.", ephemeral=True)
+    return
+  if bet > bal:
+      await inter.response.send_message("you DO NOT have enough money.", ephemeral=True)
+      return
+  if bombs < 1 or bombs > 24:
+      await inter.response.send_message("Bombs need to be more than zero and less thah 25", ephemeral=True)
+      return
+  setBal(uid, bal - bet)
+  mv = MinesView(inter.user.id, bet, bombs)
+  await inter.response.send_message(content=None, view=mv)
+  mv.msg = await inter.original_response()
+  mv.user = inter.user
+  await mv.spawn_cashout(inter)
 
 
 # i willmmakemthe multipliers in a functiin so i can chqnge them easily
@@ -737,9 +823,9 @@ async def minesCMD(inter: discord.Interaction, amount: str, bombs: int):
 C_Conifg = {
   "easy": {"risk": 7, "mult": 1.065},
   "medium": {"risk": 12, "mult": 1.11},
-  "hard": {"risk": 23, "mult": 1.224},
+  "hard": {"risk": 20, "mult": 1.19},
 } #
-roadlength = 35
+roadlength = 5
 
 class ChickenView(discord.ui.View):
   def __init__(self, bet, user_id, difficulty):
@@ -802,6 +888,7 @@ class ChickenView(discord.ui.View):
         description="You jumped and got ran over.",
         color=discord.Color.red()
       )
+      new_log(self.user_id, f"The user {inter.user.display_name} played ChickenRoad with {self.difficulty} difficulty, he lost after {self.stepsTaken} jumps, leaving away a x{self.current_mult:.2f}, user id: {self.user_id}, currentBal (after bet): {getBal(str(inter.user.id)):,} ")
       embed.add_field(name="Progress", value=self.ProgressBar(lostAtStep=self.stepsTaken), inline=False)
       await inter.response.edit_message(embed=embed, view=None)
     else:
@@ -812,18 +899,21 @@ class ChickenView(discord.ui.View):
         win_amt = int(self.bet * self.current_mult)
         uid = str(self.user_id)
         setBal(uid, getBal(uid) + win_amt)
-        embed = self.createE(
-          "End of the road",
-          f"You reached the end of the road, You cashed out with **{win_amt:,}** coins!",
-          discord.Color.gold()
-        )
+        embed = discord.Embed()
+        embed.title="End of the road"
+        embed.description=f"You reached the end of the road, You cashed out with **{win_amt:,}** coins! x**{self.current_mult:.2f}** multi!"
+        embed.color=discord.Color.gold()
+        win_amt = round(self.bet * self.current_mult)
+        new_log(inter.user.id, f"The user {inter.user.display_name} played ChickenRoad with {self.difficulty} difficulty, he reached the end of the road and automatically cashed out with {win_amt:,} and a {self.current_mult:.2f} multi, initial bet: {self.bet:,} user id: {inter.user.id}, currentBal (after bet): {getBal(str(inter.user.id)):,}")
         await inter.response.edit_message(embed=embed, view=None)
       else:
         embed = self.createE(
+          
           "Chicken Road",
           "The chicken successfully crossed the road",
           discord.Color.gold()
         )
+        win_amt = round(self.bet * self.current_mult)
         await inter.response.edit_message(embed=embed, view=self)
   @discord.ui.button(label="Cashout", style=discord.ButtonStyle.red, emoji="💰")
   async def cashoutBtn(self, inter: discord.Interaction, _):
@@ -837,9 +927,10 @@ class ChickenView(discord.ui.View):
     
     embed = discord.Embed(
       title=f"💰 Cashed Out",
-      description=f"You cashed out with **{win_amt}** coins at a **x{self.current_mult:.2f}** Multiplier",
+      description=f"You cashed out with **{win_amt:,}** coins at a **x{self.current_mult:.2f}** Multiplier",
       color=discord.Color.gold()
     )
+    new_log(inter.user.id, f"The user {inter.user.display_name} played ChickenRoad on {self.difficulty} difficulty, he cashed out with {win_amt:,} and a x{self.current_mult:.2f} multi, initial bet: {self.bet:,}, user id: {inter.user.id}, currentBal (after bet): {getBal(str(self.user_id)):,}")
     embed.add_field(name="Potential Winnings", value=f"You could Jumped **{self.safeJumps}** and got a **x{self.max_multiplier:.2f}** Multi!", inline=False)
     await inter.response.edit_message(embed=embed, view=None)
 
@@ -876,6 +967,10 @@ class ChickenStartView(discord.ui.View):
 @bot.tree.command(name="chicken", description="go to #chances for multipliers and chances info")
 @app_commands.describe(amount="Bet")
 async def chicken(inter: discord.Interaction, amount: str):
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
   uid = str(inter.user.id)
   amt = parse(amount)
   bal = getBal(uid)
@@ -909,7 +1004,7 @@ def saveCodes():
   json.dump(codes, f, indent=4)
   f.close()
 def generate_code(length=10):
-  characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_'
+  characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
   while True:
     code = ''.join(random.choice(characters) for _ in range(length))
     if code not in codes:
@@ -934,6 +1029,11 @@ async def on_message(message):
       except discord.Forbidden:
         print(f"Bot doesn't have premssion to delete the message")
   await bot.process_commands(message)
+def block_channel():
+    async def predicate(inter: discord.Interaction):
+        # Block all commands in this channel
+        return inter.channel_id != TARGET_CHANNEL_ID
+    return app_commands.check(predicate)
 @bot.tree.command(name="gencode", description="generate a code, $1M minimum, 1-30 Uses. PLEASE USE #HELP FOR ANY QUESTIONS.")
 @app_commands.describe(
   amount="amount of money per use",
@@ -950,6 +1050,7 @@ async def gencode_cmd(inter: discord.Interaction, amount: str, uses: int, custom
   uid = str(inter.user.id)
   try:
     amtV = parse(amount)
+    
   except:
     await inter.response.send_message("invalid amount.", ephemeral=True)
     return
@@ -985,6 +1086,7 @@ async def gencode_cmd(inter: discord.Interaction, amount: str, uses: int, custom
       return
     setBal(uid, currentB - cost)
   newCode = generate_code()
+  new_log(inter.user.id, f"The user {inter.user.display_name} generated a code: {newCode},  it gives {amtV:,} per use ({amtV * 0.95:,.0f} after 5% tax) and it has {uses}, total cost: {totalV}, currentBal (after making this code): {getBal(str(inter.user.id)):,}, user id: {inter.user.id}")
   pingP = "<@&1445664081187967137>" if not silent else ""
   customMsg = f"\n\n## *{custom_message}*" if custom_message else ""
 
@@ -1022,11 +1124,13 @@ async def gencode_cmd(inter: discord.Interaction, amount: str, uses: int, custom
 
 
 
-
-
 @bot.tree.command(name="redeem", description="Redeem a code")
 @app_commands.describe(code="Enter the code that you got from the cldes channel ")
 async def redeem_cmd(inter: discord.Interaction, code: str):
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌ (You need to redeem the code elsewhere.)", ephemeral=True
+        )
   uid = str(inter.user.id)
   norm_code = code.upper()
   isInCodeChannel = inter.channel_id == TARGET_CHANNEL_ID
@@ -1046,6 +1150,7 @@ async def redeem_cmd(inter: discord.Interaction, code: str):
   code_data["redeemed_by"].append(uid)
   generator_id = int(code_data["generated_by"])
   generator = inter.guild.get_member(generator_id)
+  new_log(uid, f"The user {inter.user.display_name} redeemed a code and got {amount_gained:,} from it (after 5% tax), it was generated_by {code_data["generated_by"]} it has {code_data["uses"]} uses after this usage, currentBal (after /redeeming the code): {getBal(str(inter.user.id)):,}, user id: {inter.user.id}")
   if generator is None:
     generatorNAME = f"<@{generator_id}>"
   else:
