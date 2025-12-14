@@ -79,7 +79,23 @@ def getBal(uid):
 def setBal(uid, amt):
   balances[uid] = amt
   saveBals()
+
+async def NEB(inter):#not enough bal
+  await inter.response.send_message("You do not have enough money", ephemeral=True)
+
+async def IBA(inter): # invalid bet amount
+  await inter.response.send_message("Invalid amount.", ephemeral=True)
+
+class DiceBot(commands.Bot):
+  def __init__(self):
+    intents = discord.Intents.default()
+    intents.members = True
+    super().__init__(command_prefix="!", intents=intents)
+  async def setup_hook(self):
+    await self.tree.sync()
   
+bot = DiceBot()
+
 def multF(target, direction):
   chance = 0 
   if direction == "over":
@@ -154,17 +170,66 @@ class RollView(discord.ui.View):
       color=discord.Color.gold(),
       )
     await inter.response.edit_message(embed=embed, view=None)
-      
-class DiceBot(commands.Bot):
-  def __init__(self):
-    intents = discord.Intents.default()
-    intents.members = True
-    super().__init__(command_prefix="!", intents=intents)
-  async def setup_hook(self):
-    await self.tree.sync()
+    
+    
+@bot.tree.command(name='roll', description="please go to #help for more information!")
+@app_commands.describe(amount='How Much To Roll.', target='3-97, higher risk higher reward.', choice="over/under")
+async def roll_cmd(inter, amount: str, target: int, choice: str):
+  if inter.channel.id in blocked:
+        return await inter.response.send_message(
+            "You can't do that here ❌", ephemeral=True
+        )
+  direction = choice.lower()
+  if direction != "over" and direction != 'under':
+    await inter.response.send_message('Choice must be over or under.', ephemeral=True)
+    return
+  if target < 3 or target > 97:
+    await inter.response.send_message('Please use Numbers 3-97!', ephemeral=True)
+    return
+  uid = str(inter.user.id)
+  amt = parse(amount)
+  bal = getBal(uid)
+  if uid not in balances:
+    setBal(uid, bal)
+  if amt > bal:
+    await NEB(inter)
+    return
+  if amt <= 0:
+    await IBA(inter)
+    return
+  new_bal = bal - amt 
+  setBal(uid, new_bal)
   
-bot = DiceBot()
-
+  roll = random.randint(1, 100)
+  won = False
+  if (direction == 'over'):
+    if roll > target:
+      won = True
+    else:
+      won = False
+  elif (direction == "under"):
+    if roll < target:
+      won = True
+    else:
+      won = False
+  mult = multF(target, direction)
+  
+  if won:
+    embed = discord.Embed()
+    embed.title="Roll Game:"
+    embed.description=f"You rolled **{roll}** -- **WIN!**"
+    embed.color=discord.Color.green()
+    embed.add_field(name="Multiplier", value=f"x{mult:.2f}")
+    view = RollView(amt, target, direction, mult, inter.user.id)
+  else:
+    embed = discord.Embed() # eventually came back to the old methodbecause i got confused i was confused cuz i didnt know how to add fields that way :p
+    embed.title = "Roll Game:"
+    embed.description = f"You rolled **{roll}** - lost."
+    embed.color = discord.Color.red()
+    embed.add_field(name="Final Winnings", value="0")
+    view = None
+    
+  await inter.response.send_message(embed=embed, view=view)
 @bot.tree.command(name="balance", description="Check your balance")
 async def balance(inter):
   if inter.channel.id in blocked:
@@ -207,10 +272,6 @@ async def give(inter, user: discord.Member, amt: str):
         return await inter.response.send_message(
             "You can't do that here ❌", ephemeral=True
         )
-  if inter.channel.id in blocked:
-        return await inter.response.send_message(
-            "You can't do that here ❌", ephemeral=True
-        )
   uid = str(user.id)
   a = parse(amt)
   current = getBal(uid)
@@ -236,61 +297,7 @@ async def take(inter, user: discord.Member, amt: str, reason: str):
   new_log(uid, f"The owner used /admintakemoney and took ${a:,} from {user.display_name}, user id: {uid}, balance after: {new_bal:,}, reason: {reason}")
   await inter.response.send_message(f'Removed **{a:,}** coins from {user.mention}.')
   
-@bot.tree.command(name='roll', description="please go to #help for more information!")
-@app_commands.describe(amount='How Much To Roll.', target='3-97, higher risk higher reward.', choice="over/under")
-async def roll_cmd(inter, amount: str, target: int, choice: str):
-  if inter.channel.id in blocked:
-        return await inter.response.send_message(
-            "You can't do that here ❌", ephemeral=True
-        )
-  direction = choice.lower()
-  if direction != "over" and direction != 'under':
-    await inter.response.send_message('Choice must be over or under.', ephemeral=True)
-    return
-  if target < 3 or target > 97:
-    await inter.response.send_message('Please use Numbers 3-97!', ephemeral=True)
-    return
-  uid = str(inter.user.id)
-  amt = parse(amount)
-  bal = getBal(uid)
-  if uid not in balances:
-    setBal(uid, bal)
-  if amt > bal:
-    await inter.response.send_message("Not enough Coins.", ephemeral=True)
-    return
-  new_bal = bal - amt 
-  setBal(uid, new_bal)
-  
-  roll = random.randint(1, 100)
-  won = False
-  if (direction == 'over'):
-    if roll > target:
-      won = True
-    else:
-      won = False
-  elif (direction == "under"):
-    if roll < target:
-      won = True
-    else:
-      won = False
-  mult = multF(target, direction)
-  
-  if won:
-    embed = discord.Embed()
-    embed.title="Roll Game:"
-    embed.description=f"You rolled **{roll}** -- **WIN!**"
-    embed.color=discord.Color.green()
-    embed.add_field(name="Multiplier", value=f"x{mult:.2f}")
-    view = RollView(amt, target, direction, mult, inter.user.id)
-  else:
-    embed = discord.Embed() # eventually came back to the old methodbecause i got confused i was confused cuz i didnt know how to add fields that way :p
-    embed.title = "Roll Game:"
-    embed.description = f"You rolled **{roll}** - lost."
-    embed.color = discord.Color.red()
-    embed.add_field(name="Final Winnings", value="0")
-    view = None
-    
-  await inter.response.send_message(embed=embed, view=view)
+
 class HiloView(discord.ui.View):
   def __init__(self, bet, last_num, user_id):
     super().__init__(timeout=60)
@@ -374,11 +381,11 @@ async def hilo_cmd(inter, amount: str):
   bal = getBal(uid)
   
   if amt <= 0:
-    await inter.response.send_message("Invalid amount.", ephemeral=True)
+    await IBA(inter)
     return
   
   if amt > bal:
-    await inter.response.send_message("Not Enough **__Credit__**", ephemeral=True)
+    await NEB(inter)
     return
   
   setBal(uid, bal - amt)
@@ -413,11 +420,11 @@ async def givemoney(inter, user: discord.Member, amount: str):
   sBal = getBal(SID)
   
   if amt <= 0:
-    await inter.response.send_message("Invalid Amount.", ephemeral=True)
+    await IBA(inter)
     return
   
   if sBal < amt:
-    await inter.response.send_message("Not Enough money.", ephemeral=True)
+    await NEB(inter)
     return
   
   
@@ -528,21 +535,24 @@ class blackjackView(discord.ui.View):
     await inter.edit_original_response(embed=LASTE, view=None)
 
 @bot.tree.command(name="blackjack", description="Play blackjack (x2), PLEASE USE #HELP FOR MORE INFO OR OPEN A SUPPORT TICKET.")
-async def blackjack(Interaction: discord.Interaction, bet: str):
-  if Interaction.channel.id in blocked:
+async def blackjack(inter: discord.Interaction, bet: str):
+  if inter.channel.id in blocked:
         return await inter.response.send_message(
             "You can't do that here ❌", ephemeral=True
         )
-  user_id = str(Interaction.user.id)
+  user_id = str(inter.user.id)
   betAMT = parse(bet)
   bal = getBal(user_id)
   
   if betAMT > bal:
-    await Interaction.response.send_message("You Do Not Have Enough Balance.", ephemeral=True)
+    await NEB(inter)
+    return
+  if betAMT <= 0:
+    await IBA(inter)
     return
   setBal(user_id, bal - betAMT)
-  view = blackjackView(betAMT, Interaction.user.id)
-  await Interaction.response.send_message(embed=discord.Embed(
+  view = blackjackView(betAMT, inter.user.id)
+  await inter.response.send_message(embed=discord.Embed(
     title="Blackjack",
     description=f"Your hand: {view.hand_display(view.player_hand)}\nDealer showing: {view.dealer_hand[0][1]}{view.dealer_hand[0][0]}",
     color=discord.Color.blue()
@@ -609,10 +619,10 @@ async def paper_cmd(inter: discord.Interaction, amount: str):
   bal = getBal(user_id)
   
   if bet <= 0:
-    await inter.response.send_message("Invalid bet Amount", ephemeral=True)
+    await IBA(inter)
     return
   if bet > bal:
-    await inter.response.send_message("You Do NOT Have enough coins.", ephemeral=True)
+    await NEB(inter)
     return
   
   
@@ -788,10 +798,10 @@ async def minesCMD(inter: discord.Interaction, amount: str, bombs: int):
   bet = parse(amount)
   bal = getBal(uid)
   if bet <= 0:
-    await inter.response.send_message("You Need Atleast $1 to bet.", ephemeral=True)
+    await IBA(inter)
     return
   if bet > bal:
-      await inter.response.send_message("you DO NOT have enough money.", ephemeral=True)
+      await NEB(inter)
       return
   if bombs < 1 or bombs > 24:
       await inter.response.send_message("Bombs need to be more than zero and less thah 25", ephemeral=True)
@@ -961,10 +971,10 @@ async def chicken(inter: discord.Interaction, amount: str):
   amt = parse(amount)
   bal = getBal(uid)
   if amt <= 0:
-    await inter.response.send_message("Invalid bet amount.", ephemeral=True)
+    await IBA(inter)
     return
   if amt > bal:
-    await inter.response.send_message("Not enough Money.", ephemeral=True)
+    await NEB(inter)
     return
   view = ChickenStartView(amt, inter.user.id)
   embed = discord.Embed(
@@ -1052,12 +1062,12 @@ async def gencode_cmd(inter: discord.Interaction, amount: str, uses: int, custom
     await inter.response.send_message("The custom message can't be longer than 100 characters.", ephemeral=True)
     return
   if amtV <= 0:
-    await inter.response.send_message("Amount must be positive.", ephemeral=True)
+    await IBA(inter)
     return
   totalV = amtV * uses 
   MPU = 250000
   if not is_admin and amtV < MPU:
-    await inter.response.send_message(f"The minimum amount per use is 250k, and the total cost of your code must be or exeed 1m, this is made to prevent spamming the role without any worthy code.", ephemeral=True)
+    await NEB(inter)
     return
   MTV = 1000000 
   if not is_admin and totalV < MTV:
@@ -1227,11 +1237,11 @@ async def de_es(inter, amount_str):
   except:
     await inter.response.send_message("Invalid bet amount.", ephemeral=True)
   if bet  <= 0:
-    await inter.response.send_message("Bet must be greater than zero.", ephemeral=True)
+    await IBA(inter)
     return
   bal = getBal(u_i_d)
   if bet > bal:
-    await inter.response.send_message("Not enough coins.", ephemeral=True)
+    await NEB(inter)
     return # you cant be seeing this XD
   setBal(u_i_d, bal - bet)
   embed = discord.Embed(title="Slots", color=discord.Color.blue())
