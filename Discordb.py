@@ -81,7 +81,7 @@ def setBal(uid, amt):
   saveBals()
 
 async def NEB(inter):#not enough bal
-  await inter.response.send_message("You do not have enough money", ephemeral=True)
+  await inter.response.send_message("You don't have enough money.", ephemeral=True)
 
 async def IBA(inter): # invalid bet amount
   await inter.response.send_message("Invalid amount.", ephemeral=True)
@@ -475,7 +475,7 @@ class blackjackView(discord.ui.View):
       new_log(inter.user.id, f"The user {inter.user.display_name} played blackjack and Lost {self.bet:,}, current bal: {getBal(str(inter.user.id)):,}, user id: {inter.user.id}.")
       await inter.response.edit_message(embed=embed, view=None)
       return
-    embed = discord.Embed(title="Blackjack", color=discord.Color.blue())
+\    embed = discord.Embed(title="Blackjack", color=discord.Color.blue())
     embed.add_field(name="Your Hand: ", value=self.hand_display(self.player_hand))
     embed.add_field(name="Dealer showing: ", value=f"{self.dealer_hand[0][1]}({self.dealer_hand[0][0]})")
     await inter.response.edit_message(embed=embed, view=self)
@@ -1193,10 +1193,11 @@ slotEmos = {
   "REDSTONE": "<:redstone:1447910240485117993>",
   "COPPER": "<:copper:1447910285246468207>",
   "COAL": "<:coal:1447910373280841769>",
+  "BAD": ":no_entry:",
   "NETH": "<:neth:1447910452334952449>"
 }
-slotsATM = ["GOLD", "EMERALD", "DIAMOND", "QUARTZ", "REDSTONE", "COPPER", "COAL", "NETH"]
-slotchance = (13.857, 13.857, 13.857, 13.857, 13.857, 13.857, 13.857, 3)
+slotsATM = ["GOLD", "EMERALD", "DIAMOND", "QUARTZ", "REDSTONE", "COPPER", "COAL", "BAD", "NETH"]
+slotchance = (13.857, 13.857, 13.857, 13.857, 13.857, 13.857, 13.857, 14.5, 3)
 def spin(prev=None):
   while True:
     s = random.choices(slotsATM, weights=slotchance, k=1)[0]
@@ -1300,18 +1301,76 @@ async def on_member_remove(memberr: discord.Member):
     new_log(None, f"The user {memberr.display_name} left/got kicked/got banned from the server. user id: {memberr.id}")
   except Exception as err:
     print(f"Failed: {err}")
-
-
+class CrashView(discord.ui.View):
+  def __init__(self, u_id, bet__amt):
+    super().__init__(timeout=None)
+    self.u_id = u_id
+    self.bet__amt = bet__amt
+    self.isCashed = False
+    self.currMulti = 1.0
+  @discord.ui.button(label="Stop", emoji="✋", style=discord.ButtonStyle.red)
+  async def Stop(self, inter: discord.Interaction, button: discord.ui.Button):
+    if not self.isCashed:
+      self.isCashed = True
+      button.disabled = True
+      await inter.response.defer()
+@bot.tree.command(name="crash", description="Crash")
+@app_commands.describe(amount="bet amount")
+async def crashCMD(inter: discord.Interaction, amount: str):
+  u_id = str(inter.user.id)
+  bett = parse(amount)
+  bal = getBal(u_id)
+  if bett <= 0:
+    await IBA(inter)
+    return
+  if bett > bal:
+    await NEB(inter)
+    return
+  setBal(u_id, bal - bett)
+  CL = 1.1 
+  while random.randint(1, 100) > 10:
+    CL += 0.1 
+  CL = round(CL, 1)
+  view = CrashView(u_id, bett)
+  result = discord.Embed(title="Crash", color=discord.Color.green())
+  result.add_field(name="Multiplier", value="x1.0")
+  result.add_field(name="Winnings", value=f"{int(bett):,}")
+  result.set_footer(text=f"{inter.user.name}")
+  await inter.response.send_message(embed=result, view=view)
+  msg = await inter.original_response()
+  while not view.isCashed:
+    await asyncio.sleep(0.35)
+    if view.currMulti >= CL:
+      result = discord.Embed(title="Crash", color=discord.Color.red())
+      result.add_field(name="Multiplier", value=f"x{view.currMulti:.1f}")
+      result.add_field(name="Winnings", value=f"~~{bett:,}~~")
+      view.stop()
+      new_log(u_id, f"The user {inter.user.display_name} played crash and lost {bett:,}, last multiplier: {view.currMulti}, bet: {bett:,}, uid: {inter.user.id}, currentBal: {getBal(u_id)}")
+      return await msg.edit(embed=result, view=None)
+    
+    
+    
+    
+    
+    if not view.isCashed:
+      pp = int(bett * view.currMulti)
+      result = discord.Embed(title="Crash", color=discord.Color.green())
+      result.add_field(name="Multiplier", value=f"x{view.currMulti:.1f}")
+      result.add_field(name="Winnings", value=f"{pp:,}")
+      result.set_footer(text=f"{inter.user.name}")
+      await msg.edit(embed=result)
+      view.currMulti = round(view.currMulti + 0.1, 1)
+  if view.isCashed:
+    ATW = int((bett * view.currMulti) * 0.95)
+    setBal(u_id, bal + ATW)
+    result = discord.Embed(title="Crash", color=discord.Color.gold(), description=f"You cashed out in crash! You could have reached x**{CL:.1f}**")
+    result.add_field(name="Multiplier", value=f"{view.currMulti:.1f}")
+    result.add_field(name="Winnings", value=f"**{ATW:,}** (5% Tax)")
+    result.add_field(name="Profit", value=f"**{ATW - bett:,}**")
+    result.set_footer(text=f"{inter.user.name}")
+    new_log(u_id, f"The user {inter.user.display_name} played crash and won, he cashed ojt with {ATW:,} (5% Tax), bet: {bett:,}, currentBal: {bal:,}, user id: {inter.user.id}"
+    ) # i think the tax will mess up the ai and machine learning but idk bout that maybe after i get a machine learnig device or so, after learning more about machine learning, dude why am i telling my life story???
+    await msg.edit(embed=result, view=None)
+  
   
 bot.run(TOKEN)
-  
-    
-    
-  
-    
-      
-  
-  
-
-
-
