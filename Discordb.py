@@ -8,7 +8,7 @@ import random
 from config import TOKEN
 import asyncio
 import re
-
+# i will add so
 balF = "balances.json"
 Fbal = 30000
 housingEdge = 0.97
